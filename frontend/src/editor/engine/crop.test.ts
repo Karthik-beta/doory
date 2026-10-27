@@ -1,4 +1,9 @@
+import { FabricImage, type FabricObject } from 'fabric'
+import { createBlankDocument } from '@/lib/document'
+import { createMemoryAdapter } from '../dev/memoryAdapter'
+import { installImageStub } from '../test/imageStub'
 import { type CropGeometry, clampCrop, cropToFrame, fitAspect, frameToCrop } from './crop'
+import { EditorEngine } from './editor'
 
 const base: CropGeometry = { natW: 400, natH: 200, sx: 0.5, sy: 0.5, angle: 0, flipX: false, flipY: false, ghostCenter: { x: 300, y: 200 } }
 
@@ -63,5 +68,56 @@ describe('crop geometry', () => {
     const g = { ...base, sx: 1, sy: 0.5 }
     const c = fitAspect(g, { cropX: 0, cropY: 0, width: 400, height: 200 }, 1)
     expect((c.width * g.sx) / (c.height * g.sy)).toBeCloseTo(1)
+  })
+})
+
+describe('crop session', () => {
+  let restore: () => void
+  beforeEach(() => {
+    restore = installImageStub({ width: 200, height: 100 })
+    vi.spyOn(FabricImage.prototype, '_render').mockImplementation(() => undefined)
+    URL.createObjectURL = vi.fn(() => 'blob:fake')
+  })
+  afterEach(async () => {
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    vi.restoreAllMocks()
+    restore()
+    document.body.innerHTML = ''
+  })
+
+  async function setup() {
+    const engine = new EditorEngine({ adapter: createMemoryAdapter().adapter, document: createBlankDocument(800, 600), meta: { id: 'd', title: 'T', mode: 'guest' }, ephemeral: true })
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const pageId = engine.state.doc.pages[0].id
+    engine.mountPage(pageId, host)
+    const view = await engine.whenView(pageId)
+    view.setLayout(1, { x: 0, y: 0, width: 800, height: 600 })
+    await engine.insert.imageFiles([new File([new Uint8Array([1, 2, 3])], 'photo.png', { type: 'image/png' })])
+    await vi.waitFor(() => expect(view.canvas.getObjects()).toHaveLength(1))
+    const img = view.canvas.getObjects()[0] as FabricImage
+    view.selectObjects([img])
+    await engine.crop.start()
+    const frame = view.canvas.getActiveObject() as FabricObject
+    // Alt held, so snapping stays out of the way.
+    const e = new MouseEvent('mousemove', { altKey: true })
+    const drag = (patch: { scaleX?: number; scaleY?: number }): void => {
+      frame.set(patch)
+      view.canvas.fire('object:scaling', { target: frame, e } as never)
+    }
+    const release = (): void => void view.canvas.fire('object:modified', { target: frame } as never)
+    return { engine, img, drag, release }
+  }
+
+  it('crops one side without moving the other', async () => {
+    const { engine, img, drag, release } = await setup()
+    drag({ scaleX: 0.5 })
+    release()
+    expect(img.width).toBeCloseTo(100)
+    for (let i = 1; i <= 10; i++) drag({ scaleY: 1 - i * 0.04 })
+    release()
+    expect(img.width).toBeCloseTo(100)
+    expect(img.height).toBeCloseTo(60)
+    engine.dispose()
   })
 })
