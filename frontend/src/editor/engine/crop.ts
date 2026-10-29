@@ -229,7 +229,8 @@ export class CropSession {
 
   private currentFrame(): Frame {
     const c = this.frame.getCenterPoint()
-    return { cx: c.x, cy: c.y, w: this.frame.getScaledWidth(), h: this.frame.getScaledHeight() }
+    // Not getScaledWidth/Height: they include the stroke, which would grow the frame on every sync.
+    return { cx: c.x, cy: c.y, w: this.frame.width * this.frame.scaleX, h: this.frame.height * this.frame.scaleY }
   }
 
   private placeFrame(f: Frame): void {
