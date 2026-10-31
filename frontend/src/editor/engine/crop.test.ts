@@ -101,12 +101,16 @@ describe('crop session', () => {
     const frame = view.canvas.getActiveObject() as FabricObject
     // Alt held, so snapping stays out of the way.
     const e = new MouseEvent('mousemove', { altKey: true })
-    const drag = (patch: { scaleX?: number; scaleY?: number }): void => {
+    const drag = (patch: { scaleX?: number; scaleY?: number; left?: number }): void => {
       frame.set(patch)
       view.canvas.fire('object:scaling', { target: frame, e } as never)
     }
+    const move = (left: number): void => {
+      frame.set({ left })
+      view.canvas.fire('object:moving', { target: frame, e } as never)
+    }
     const release = (): void => void view.canvas.fire('object:modified', { target: frame } as never)
-    return { engine, img, drag, release }
+    return { engine, img, frame, drag, move, release }
   }
 
   it('crops one side without moving the other', async () => {
@@ -118,6 +122,32 @@ describe('crop session', () => {
     release()
     expect(img.width).toBeCloseTo(100)
     expect(img.height).toBeCloseTo(60)
+    engine.dispose()
+  })
+
+  it('stops a resize at the edge of the image without moving the other side', async () => {
+    const { engine, img, frame, drag, release } = await setup()
+    drag({ scaleX: 0.5 })
+    release()
+    expect(img.cropX).toBeCloseTo(50)
+    expect(img.cropX + img.width).toBeCloseTo(150)
+    // Fabric's left handle keeps the right edge where it is.
+    const right = frame.getCenterPoint().x + frame.width / 2
+    drag({ scaleX: 2, left: right - frame.width })
+    release()
+    expect(img.cropX).toBeCloseTo(0)
+    expect(img.cropX + img.width).toBeCloseTo(150)
+    engine.dispose()
+  })
+
+  it('keeps the size when the frame is moved past the edge of the image', async () => {
+    const { engine, img, frame, drag, move, release } = await setup()
+    drag({ scaleX: 0.5 })
+    release()
+    move(frame.left - frame.width)
+    release()
+    expect(img.cropX).toBeCloseTo(0)
+    expect(img.width).toBeCloseTo(100)
     engine.dispose()
   })
 })
