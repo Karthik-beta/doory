@@ -2,7 +2,7 @@ import { FabricImage, type FabricObject } from 'fabric'
 import { createBlankDocument } from '@/lib/document'
 import { createMemoryAdapter } from '../dev/memoryAdapter'
 import { installImageStub } from '../test/imageStub'
-import { type CropGeometry, clampCrop, cropToFrame, fitAspect, frameToCrop } from './crop'
+import { type CropGeometry, clampCrop, cropToFrame, fitAspect, frameToCrop, trimCrop } from './crop'
 import { EditorEngine } from './editor'
 
 const base: CropGeometry = { natW: 400, natH: 200, sx: 0.5, sy: 0.5, angle: 0, flipX: false, flipY: false, ghostCenter: { x: 300, y: 200 } }
@@ -50,6 +50,11 @@ describe('crop geometry', () => {
     expect(clampCrop(base, { cropX: -50, cropY: 190, width: 100, height: 50 })).toEqual({ cropX: 0, cropY: 150, width: 100, height: 50 })
     expect(clampCrop(base, { cropX: 0, cropY: 0, width: 9999, height: 9999 })).toMatchObject({ width: 400, height: 200 })
     expect(clampCrop(base, { cropX: 0, cropY: 0, width: 0, height: 0 }).width).toBe(8)
+  })
+
+  it('trims the parts of a region that lie outside the image', () => {
+    expect(trimCrop(base, { cropX: -50, cropY: 150, width: 200, height: 100 })).toEqual({ cropX: 0, cropY: 150, width: 150, height: 50 })
+    expect(trimCrop(base, { cropX: 10, cropY: 20, width: 100, height: 50 })).toEqual({ cropX: 10, cropY: 20, width: 100, height: 50 })
   })
 
   it('fits an aspect ratio inside the image around the current centre', () => {
